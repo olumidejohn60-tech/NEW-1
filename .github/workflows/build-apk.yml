@@ -1,0 +1,39 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find the project folder
+        run: |
+          CFG=$(find . -name capacitor.config.json -not -path "*/node_modules/*" | head -1)
+          if [ -z "$CFG" ]; then echo "capacitor.config.json not found - upload the project files"; exit 1; fi
+          echo "APP_DIR=$(dirname "$CFG")" >> "$GITHUB_ENV"
+          echo "Project folder: $(dirname "$CFG")"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install dependencies
+        run: cd "$APP_DIR" && npm install
+      - name: Bundle three.js into the app
+        run: cd "$APP_DIR" && cp node_modules/three/build/three.min.js www/three.min.js
+      - name: Create Android project
+        run: cd "$APP_DIR" && npx cap add android
+      - name: Force landscape
+        run: cd "$APP_DIR" && sed -i 's/android:name=".MainActivity"/android:name=".MainActivity" android:screenOrientation="sensorLandscape"/' android/app/src/main/AndroidManifest.xml
+      - name: Sync web files
+        run: cd "$APP_DIR" && npx cap sync android
+      - name: Build debug APK
+        run: cd "$APP_DIR/android" && chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PitchKings-apk
+          path: ${{ env.APP_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
